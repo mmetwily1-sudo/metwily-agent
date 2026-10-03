@@ -3,5 +3,8 @@
   "autoCommit": true,
   "maxSteps": 15,
   "historyCharsCap": 60000,
-  "historyKeepLast": 10
+  "historyKeepLast": 10,
+  "mcpServers": {
+    "echo": { "command": "node", "args": ["./mcp-echo-server.mjs"] }
+  }
 }

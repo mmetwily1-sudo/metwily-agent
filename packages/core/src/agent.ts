@@ -8,6 +8,7 @@ import { z } from "zod";
 import { SYSTEM_AR, getCandidateModels, isQuotaError } from "@metwily/llm/router.js";
 import { costOf } from "@metwily/llm/costs.js";
 import type { CostReport, TokenUsage } from "@metwily/llm/costs.js";
+import { loadMCPTools } from "./mcp-tools.js";
 import { loadConfig } from "@metwily/tools/config.js";
 import { editTool, readFiles, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
 import { autoCommitFile } from "@metwily/tools/git.js";
@@ -90,6 +91,7 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   const autoCommit = opts.autoCommit ?? cfg.autoCommit;
   const rawHistory = await loadHistory(cwd);
   const { history, compacted } = compactHistory(rawHistory, cfg.historyKeepLast, cfg.historyCharsCap);
+  const mcp = await loadMCPTools(cwd, (entry) => audit(cwd, entry));
   const tools = {
     map: tool({
       description: "خريطة رموز الريبو (PageRank) — ابدأ بها لفهم المشروع قبل القراءة.",
@@ -150,6 +152,7 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
           }),
         }
       : {}),
+    ...mcp.tools,
   };
 
   const systemText =
@@ -188,19 +191,23 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   let usedLabel = candidates[0]?.label ?? "unknown";
   let lastErr: unknown;
   let lastUsage: TokenUsage | undefined;
-  for (let i = 0; i < candidates.length; i++) {
-    try {
-      const r = await runOnce(candidates[i].model);
-      full = r.text;
-      lastUsage = r.usage;
-      usedLabel = candidates[i].label;
-      if (i > 0) await audit(cwd, { tool: "fallback", candidate: usedLabel });
-      break;
-    } catch (err) {
-      if (!isQuotaError(err)) throw err;
-      lastErr = err;
-      onText?.(`\n[الحصة ممتلئة — تجربة البديل ${i + 1}/${candidates.length - 1}...]\n`);
+  try {
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        const r = await runOnce(candidates[i].model);
+        full = r.text;
+        lastUsage = r.usage;
+        usedLabel = candidates[i].label;
+        if (i > 0) await audit(cwd, { tool: "fallback", candidate: usedLabel });
+        break;
+      } catch (err) {
+        if (!isQuotaError(err)) throw err;
+        lastErr = err;
+        onText?.(`\n[الحصة ممتلئة — تجربة البديل ${i + 1}/${candidates.length - 1}...]\n`);
+      }
     }
+  } finally {
+    mcp.close();
   }
   if (full === undefined) throw lastErr;
   if (lastUsage) {

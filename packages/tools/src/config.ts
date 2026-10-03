@@ -4,12 +4,19 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+export interface MCPServerConfigFile {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
 export interface MetwilyConfig {
   model: "deepseek-chat" | "deepseek-reasoner";
   autoCommit: boolean;
   maxSteps: number;
   historyCharsCap: number;
   historyKeepLast: number;
+  mcpServers?: Record<string, MCPServerConfigFile>;
 }
 
 export const DEFAULT_CONFIG: MetwilyConfig = {

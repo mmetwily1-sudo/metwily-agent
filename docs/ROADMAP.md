@@ -18,9 +18,9 @@
 - [ ] أول dogfood على repo خارجي صغير
 
 ## v0.3 — الاستقلال والقوة
-- [ ] موديل محلي عبر Ollama كمزوّد ثالث (Qwen3-Coder)
+- [x] عميل MCP stdio (handshake/list/call/timeout) + تحميل `mcpServers` من metwily.json كأدوات dynamic — 2026-10-04
+- [ ] موديل محلي عبر Ollama كمزوّد ثالث (مكوّد، التشغيل الحي عند تثبيت Ollama)
 - [ ] sandbox حقيقي (Docker + gVisor) بدل الثقة بالـ allowlist
-- [ ] MCP servers (توافق كامل مع opencode/Claude)
 - [ ] Web UI فوق نفس الـ API
 
 ## v1.0 — الإطلاق
