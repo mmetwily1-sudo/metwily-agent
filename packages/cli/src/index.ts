@@ -37,8 +37,13 @@ program
       if (msg.includes("DEEPSEEK_API_KEY")) {
         console.error("\n⚠️ " + msg);
         console.error("شغّل: set DEEPSEEK_API_KEY=sk-... (أو ضعه في .env)");
+      } else if (/402|Insufficient Balance/i.test(msg)) {
+        console.error("\n⚠️ رصيد DeepSeek خلص (Insufficient Balance).");
+        console.error("اشحن من: https://platform.deepseek.com — دولار واحد يكفي تجارب كتير.");
+      } else if (/401|invalid.*key|unauthorized/i.test(msg)) {
+        console.error("\n⚠️ المفتاح مرفوض (401) — تأكد من DEEPSEEK_API_KEY.");
       } else {
-        console.error("\n❌ خطأ: " + msg);
+        console.error("\n❌ خطأ: " + msg.slice(0, 300));
       }
       process.exitCode = 1;
     }
