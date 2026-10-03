@@ -6,6 +6,8 @@ import { stepCountIs, streamText, tool } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
 import { SYSTEM_AR, getCandidateModels, isQuotaError } from "@metwily/llm/router.js";
+import { costOf } from "@metwily/llm/costs.js";
+import type { CostReport, TokenUsage } from "@metwily/llm/costs.js";
 import { loadConfig } from "@metwily/tools/config.js";
 import { editTool, readFiles, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
 import { autoCommitFile } from "@metwily/tools/git.js";
@@ -23,6 +25,7 @@ export interface RunOptions {
   cwd: string;
   mode: "plan" | "build";
   onText?: (delta: string) => void;
+  onUsage?: (report: CostReport) => void;
   autoCommit?: boolean; // يتجاوز config (يُستخدم مع --no-commit)
   maxSteps?: number; // يتجاوز config
 }
@@ -159,7 +162,7 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
       ? `السياق السابق:\n${history.map((m) => `### ${m.role}\n${m.content.slice(0, 4000)}`).join("\n")}\n\n---\nالمطلوب الآن: ${prompt}`
       : prompt;
 
-  const runOnce = async (model: LanguageModel): Promise<string> => {
+  const runOnce = async (model: LanguageModel): Promise<{ text: string; usage?: TokenUsage }> => {
     const result = streamText({
       model,
       system: systemText,
@@ -173,19 +176,25 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
       onText?.(delta);
     }
     // استهلاك كامل للستريم يضمن انتهاء كل خطوات الأدوات (stopWhen)
-    const settled = result as unknown as { finishReason?: Promise<unknown> };
+    const settled = result as unknown as { finishReason?: Promise<unknown>; usage?: Promise<TokenUsage> };
     await settled.finishReason?.catch(() => undefined);
-    return full;
+    const usage = await settled.usage?.catch(() => undefined);
+    return { text: full, usage };
   };
 
-  // تناوب تلقائي: عند نفاد الحصة جرّب المفتاح التالي، ثم البوابة البديلة أخيراً.
+  // تناوب تلقائي: عند نفاد الحصة جرّب المرشح التالي (مفتاح/ollama/بوابة).
   const candidates = await getCandidateModels(cwd);
   let full: string | undefined;
+  let usedLabel = candidates[0]?.label ?? "unknown";
   let lastErr: unknown;
+  let lastUsage: TokenUsage | undefined;
   for (let i = 0; i < candidates.length; i++) {
     try {
-      full = await runOnce(candidates[i]);
-      if (i > 0) await audit(cwd, { tool: "fallback", candidate: i });
+      const r = await runOnce(candidates[i].model);
+      full = r.text;
+      lastUsage = r.usage;
+      usedLabel = candidates[i].label;
+      if (i > 0) await audit(cwd, { tool: "fallback", candidate: usedLabel });
       break;
     } catch (err) {
       if (!isQuotaError(err)) throw err;
@@ -194,6 +203,11 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
     }
   }
   if (full === undefined) throw lastErr;
+  if (lastUsage) {
+    const report = costOf(usedLabel, lastUsage);
+    await audit(cwd, { tool: "usage", ...report });
+    opts.onUsage?.(report);
+  }
   const next = compactHistory(
     [...history, { role: "user", content: prompt }, { role: "assistant", content: full }],
     cfg.historyKeepLast,

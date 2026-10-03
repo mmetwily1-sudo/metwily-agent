@@ -18,6 +18,23 @@ export const SYSTEM_AR = `أنت "متولي" — coding agent عربي أولا
 
 export type ModelId = "deepseek-chat" | "deepseek-reasoner";
 
+// Ollama محلي (نفس اتفاقية منارة: AGENT_LLM_URL + AGENT_LLM_MODEL).
+// يُفعّل فقط عند ضبط METWILY_PROVIDER=ollama — لا يغيّر السلوك الافتراضي.
+export interface OllamaConfig {
+  baseURL: string;
+  model: string;
+}
+
+export function ollamaConfig(): OllamaConfig | undefined {
+  if ((process.env.METWILY_PROVIDER ?? "").trim().toLowerCase() !== "ollama" && !process.env.AGENT_LLM_URL) {
+    return undefined;
+  }
+  return {
+    baseURL: (process.env.AGENT_LLM_URL ?? "http://127.0.0.1:11434/v1").trim(),
+    model: (process.env.METWILY_OLLAMA_MODEL ?? process.env.AGENT_LLM_MODEL ?? "qwen2.5:3b").trim(),
+  };
+}
+
 export async function getModelId(cwd = process.cwd()): Promise<ModelId> {
   const env = (process.env.METWILY_MODEL ?? "").trim();
   if (env === "deepseek-reasoner" || env === "deepseek-chat") return env;
@@ -53,28 +70,40 @@ export function geminiKeyAt(index: number): string | undefined {
   return keys[index % keys.length];
 }
 
-// قائمة المرشحين بالترتيب: الأساسي أولاً، ثم تناوب المفاتيح، ثم البوابة البديلة أخيراً.
+// قائمة المرشحين بالترتيب: deepseek المدفوع ← ollama المحلي (إن ضُبط) ← مفاتيح Gemini ← البوابة البديلة.
 // درس المعرفة (ai-agent-learning.md): بوابة OpenAI المتوافقة لـGemini (/v1beta/openai)
 // لها حصة مستقلة — تعمل عندما تموت :generateContent.
-export async function getCandidateModels(cwd = process.cwd()): Promise<LanguageModel[]> {
-  if (deepseekKey()) return [deepseek(await getModelId(cwd))];
+export async function getCandidateModels(cwd = process.cwd()): Promise<Array<{ label: string; model: LanguageModel }>> {
+  if (deepseekKey()) {
+    const id = await getModelId(cwd);
+    return [{ label: `deepseek/${id}`, model: deepseek(id) }];
+  }
+  const out: Array<{ label: string; model: LanguageModel }> = [];
+  const ollama = ollamaConfig();
+  if (ollama) {
+    const local = createOpenAICompatible({ name: "ollama-local", baseURL: ollama.baseURL });
+    out.push({ label: `ollama/${ollama.model}`, model: local(ollama.model) });
+  }
   const keys = geminiKeys();
-  if (keys.length === 0) {
+  if (keys.length === 0 && out.length === 0) {
     requireApiKey();
     throw new Error("unreachable");
   }
   const geminiModel = (process.env.METWILY_GEMINI_MODEL ?? "gemini-3.8-flash").trim();
-  const primaries = keys.map((apiKey) => createGoogleGenerativeAI({ apiKey })(geminiModel));
+  keys.forEach((apiKey, i) => {
+    out.push({ label: `gemini/${geminiModel}#${i + 1}`, model: createGoogleGenerativeAI({ apiKey })(geminiModel) });
+  });
   const gw = createOpenAICompatible({
     name: "gemini-openai-gateway",
     apiKey: keys[keys.length - 1],
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
   });
-  return [...primaries, gw(geminiModel)];
+  out.push({ label: `gemini-gateway/${geminiModel}`, model: gw(geminiModel) });
+  return out;
 }
 
 export async function getModel(cwd = process.cwd()): Promise<LanguageModel> {
-  return (await getCandidateModels(cwd))[0];
+  return (await getCandidateModels(cwd))[0].model;
 }
 
 export function isQuotaError(err: unknown): boolean {

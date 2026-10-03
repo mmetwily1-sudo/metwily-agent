@@ -11,7 +11,9 @@
 
 ## v0.2 — أول dogfood كامل 🔄 جارٍ (محظور بالحصة المجانية)
 - [ ] مهمة build حية أولى: تعديل README + auto-commit (جرّبت: read→search نجحا، الـ edit مات بالحصة)
-- [ ] عداد تكلفة/توكن لكل جلسة (usage من الـ SDK → audit)
+- [x] عداد تكلفة/توكن لكل جلسة (usage من الـ SDK → audit + طباعة) — 2026-10-04
+- [x] مزوّد Ollama المحلي (METWILY_PROVIDER=ollama) — مفحوص tsc، التشغيل الحي عند تثبيت Ollama
+- [x] flag --model لتجاوز الموديل من CLI
 - [ ] ملخص LLM للـ compaction بدل الـ marker القاعدي
 - [ ] أول dogfood على repo خارجي صغير
 

@@ -24,8 +24,9 @@ program
   .option("--plan", "عرض الخطة فقط بدون تنفيذ (read/search فقط)")
   .option("--resume", "إكمال آخر جلسة")
   .option("--no-commit", "تعطيل الـ auto-commit لهذه الجلسة")
+  .option("--model <id>", "تجاوز الموديل (deepseek-chat/reasoner أو gemini-xxx)")
   .option("-C, --cwd <dir>", "مجلد العمل", process.cwd())
-  .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; commit?: boolean; cwd: string }) => {
+  .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; commit?: boolean; model?: string; cwd: string }) => {
     if (opts.resume) {
       const history = await loadHistory(opts.cwd);
       if (history.length === 0) {
@@ -44,6 +45,11 @@ program
     }
     const intent = detectIntent(prompt);
     const mode = opts.plan || intent === "plan" ? "plan" : "build";
+    if (opts.model) {
+      // gemini-* → مفتاح Gemini، وإلا DeepSeek (نفس قاعدة getModelId)
+      if (opts.model.startsWith("gemini")) process.env.METWILY_GEMINI_MODEL = opts.model;
+      else process.env.METWILY_MODEL = opts.model;
+    }
     if (mode === "plan") console.log("[plan] وضع الخطة — أدوات القراءة فقط.\n");
     if (mode === "build" && !(await confirmBuild())) {
       console.log("تم الإلغاء — لم يُنفذ شيء.");
@@ -55,6 +61,11 @@ program
         mode,
         autoCommit: opts.commit === false ? false : undefined,
         onText: (d: string) => process.stdout.write(d),
+        onUsage: (r) => {
+          const k = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+          const cost = r.costUsd === null ? "مجاناً" : `≈ $${r.costUsd.toFixed(4)}`;
+          process.stdout.write(`\n[الاستهلاك: ${k(r.inputTokens)} in / ${k(r.outputTokens)} out — ${cost}]\n`);
+        },
       });
       void out;
       process.stdout.write("\n");
