@@ -10,6 +10,7 @@ import { loadConfig } from "@metwily/tools/config.js";
 import { editTool, readFiles, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
 import { autoCommitFile } from "@metwily/tools/git.js";
 import { buildRepoMap } from "@metwily/tools/repomap.js";
+import { checkTool } from "@metwily/tools/check.js";
 
 export const MAX_STEPS = 15;
 export const COMPACTION_AT = 0.7;
@@ -111,6 +112,15 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
       execute: async ({ pattern }) => {
         const out = await searchTool(cwd, pattern);
         await audit(cwd, { tool: "search", pattern });
+        return out;
+      },
+    }),
+    check: tool({
+      description: "فحص typecheck للمشروع. إجباري بعد أي edit وقبل done.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const out = await checkTool(cwd);
+        await audit(cwd, { tool: "check", pass: out.startsWith("✅") });
         return out;
       },
     }),

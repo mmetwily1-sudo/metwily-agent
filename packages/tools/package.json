@@ -1,1 +1,1 @@
-{"exports":{"./config.js":"./src/config.ts","./fs.js":"./src/fs.ts","./git.js":"./src/git.ts","./repomap.js":"./src/repomap.ts"},"name":"@metwily/tools","type":"module","version":"0.1.0"}
+{"exports":{"./check.js":"./src/check.ts","./config.js":"./src/config.ts","./fs.js":"./src/fs.ts","./git.js":"./src/git.ts","./repomap.js":"./src/repomap.ts"},"name":"@metwily/tools","type":"module","version":"0.1.0"}
