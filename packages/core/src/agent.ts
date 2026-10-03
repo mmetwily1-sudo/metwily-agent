@@ -1,6 +1,6 @@
 // @metwily/core/agent — الـ loop الحقيقي: streamText + tools + budget guard
 // قرار المجلس: observe → plan → act → verify، max 15 خطوة، audit log.
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
@@ -22,6 +22,48 @@ export interface RunOptions {
   onText?: (delta: string) => void;
 }
 
+// درس opencode/compaction.ts + session persistence:
+// الجلسة تُحفظ في .metwily/state.json (آخر prompt + رد مختصر).
+// الـ compaction هنا rule-based v1: نحتفظ بالهدف الأول + آخر 10 تبادلات،
+// والترقية لملخص LLM موثقة في docs/learnings-opencode.md.
+export interface StoredMsg {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const HISTORY_CHARS_CAP = 60_000;
+const HISTORY_KEEP_LAST = 10;
+
+export async function loadHistory(cwd: string): Promise<StoredMsg[]> {
+  const raw = await readFile(path.join(cwd, ".metwily", "state.json"), "utf8").catch(() => "");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { messages?: StoredMsg[] };
+    return Array.isArray(parsed.messages) ? parsed.messages : [];
+  } catch {
+    return [];
+  }
+}
+
+export function compactHistory(history: StoredMsg[]): { history: StoredMsg[]; compacted: boolean } {
+  const total = history.reduce((n, m) => n + m.content.length, 0);
+  if (history.length <= HISTORY_KEEP_LAST + 1 || total <= HISTORY_CHARS_CAP) return { history, compacted: false };
+  const head = history[0];
+  const tail = history.slice(-HISTORY_KEEP_LAST);
+  const dropped = history.length - tail.length - 1;
+  const marker: StoredMsg = {
+    role: "assistant",
+    content: `[ملخص تلقائي: تم ضغط ${dropped} تبادلات قديمة لتوفير السياق. الهدف الأصلي محفوظ أعلاه.]`,
+  };
+  return { history: [head, marker, ...tail], compacted: true };
+}
+
+export async function saveHistory(cwd: string, history: StoredMsg[]): Promise<void> {
+  const dir = path.join(cwd, ".metwily");
+  await mkdir(dir, { recursive: true }).catch(() => {});
+  await writeFile(path.join(dir, "state.json"), JSON.stringify({ messages: history }, null, 2), "utf8").catch(() => {});
+}
+
 async function audit(cwd: string, entry: Record<string, unknown>): Promise<void> {
   const dir = path.join(cwd, ".metwily");
   await mkdir(dir, { recursive: true }).catch(() => {});
@@ -30,6 +72,8 @@ async function audit(cwd: string, entry: Record<string, unknown>): Promise<void>
 
 export async function runAgent(prompt: string, opts: RunOptions): Promise<string> {
   const { cwd, mode, onText } = opts;
+  const rawHistory = await loadHistory(cwd);
+  const { history, compacted } = compactHistory(rawHistory);
   const tools = {
     read: tool({
       description: "قراءة شريحة من ملف (offset/limit). إجباري قبل أي edit.",
@@ -75,8 +119,16 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
 
   const result = streamText({
     model: getModel(),
-    system: mode === "plan" ? SYSTEM_AR + "\nوضع PLAN: اعرض الخطة فقط، لا تستخدم edit/run." : SYSTEM_AR,
-    prompt,
+    system:
+      (mode === "plan" ? SYSTEM_AR + "\nوضع PLAN: اعرض الخطة فقط، لا تستخدم edit/run." : SYSTEM_AR) +
+      (compacted ? "\n[ملاحظة: تم ضغط تاريخ الجلسة — اعتمد على الهدف الأصلي وآخر التبادلات.]" : "") +
+      (history.length > 0
+        ? "\n[سياق الجلسة السابقة مختصر — أكمل من حيث توقفت.]"
+        : ""),
+    prompt:
+      history.length > 0
+        ? `السياق السابق:\n${history.map((m) => `### ${m.role}\n${m.content.slice(0, 4000)}`).join("\n")}\n\n---\nالمطلوب الآن: ${prompt}`
+        : prompt,
     tools,
     stopWhen: stepCountIs(MAX_STEPS),
   });
@@ -89,6 +141,8 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   // استهلاك كامل للستريم يضمن انتهاء كل خطوات الأدوات (stopWhen)
   const settled = result as unknown as { finishReason?: Promise<unknown> };
   await settled.finishReason?.catch(() => undefined);
-  await audit(cwd, { tool: "done", mode, chars: full.length });
+  const next = compactHistory([...history, { role: "user", content: prompt }, { role: "assistant", content: full }]).history;
+  await saveHistory(cwd, next);
+  await audit(cwd, { tool: "done", mode, chars: full.length, compacted });
   return full;
 }

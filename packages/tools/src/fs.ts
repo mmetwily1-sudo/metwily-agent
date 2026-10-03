@@ -14,8 +14,38 @@ export const ALLOW_RUN_PREFIX = ["bun", "npm", "pnpm", "npx tsc", "tsc", "git st
 // يتتبع الملفات المقروءة — edit مرفوضة بدون read مسبق
 export const readFiles = new Set<string>();
 
-function truncate(s: string, n = TOOL_OUTPUT_TRUNCATE): string {
-  return s.length > n ? s.slice(0, n) + `\n... [truncated ${s.length - n} chars → .metwily/tmp]` : s;
+// درس opencode/truncate.ts: المخرجات الطويلة تُحفظ كاملة في ملف spill
+// ويُعرض معاينة + تلميح — لا يُرمى المحتوى أبداً.
+export async function spill(cwd: string, text: string): Promise<string> {
+  const dir = path.join(cwd, ".metwily", "tmp");
+  await fs.mkdir(dir, { recursive: true }).catch(() => {});
+  const file = path.join(dir, `tool_${Date.now()}.log`);
+  await fs.writeFile(file, text, "utf8").catch(() => {});
+  return file;
+}
+
+export async function preview(cwd: string, s: string, n = TOOL_OUTPUT_TRUNCATE): Promise<string> {
+  if (s.length <= n) return s;
+  const file = await spill(cwd, s);
+  return (
+    s.slice(0, n) +
+    `\n... [${s.length - n} chars truncated — الكامل محفوظ في: ${file}]\nاستخدم search فيه أو read بشرائح.`
+  );
+}
+
+export function truncate(s: string, n = TOOL_OUTPUT_TRUNCATE): string {
+  return s.length > n ? s.slice(0, n) + `\n... [truncated ${s.length - n} chars]` : s;
+}
+
+// درس opencode/read.ts: عند غياب الملف اقترح أقرب 3 أسماء في نفس المجلد.
+export async function missHint(cwd: string, filePath: string): Promise<string> {
+  const dir = path.dirname(path.resolve(cwd, filePath));
+  const base = path.basename(filePath).toLowerCase();
+  const entries = await fs.readdir(dir).catch(() => [] as string[]);
+  const scored = entries
+    .filter((e) => e.toLowerCase().includes(base) || base.includes(e.toLowerCase().replace(/\.[^.]+$/, "")))
+    .slice(0, 3);
+  return scored.length > 0 ? `\n\nهل تقصد؟\n${scored.join("\n")}` : "";
 }
 
 function assertInside(cwd: string, p: string): string {
@@ -27,6 +57,15 @@ function assertInside(cwd: string, p: string): string {
 
 export async function readTool(cwd: string, filePath: string, offset = 1, limit = READ_SLICE_LINES): Promise<string> {
   const abs = assertInside(cwd, filePath);
+  const st = await fs.stat(abs).catch(() => undefined);
+  if (!st) throw new Error(`الملف غير موجود: ${filePath}${await missHint(cwd, filePath)}`);
+  // درس opencode: read تدعم المجلدات — اعرض محتوياتها.
+  if (st.isDirectory()) {
+    const entries = (await fs.readdir(abs).catch(() => [] as string[])).sort().map((e) => (e.includes(".") ? e : e + "/"));
+    const slice = entries.slice(Math.max(0, offset - 1), Math.max(0, offset - 1) + Math.min(limit, READ_SLICE_LINES));
+    readFiles.add(abs);
+    return `<type>directory</type>\n${slice.join("\n")}\n(${entries.length} entries)`;
+  }
   const raw = await fs.readFile(abs, "utf8");
   const lines = raw.split("\n");
   if (lines.length > MAX_FILE_LINES && limit >= MAX_FILE_LINES) {
@@ -59,7 +98,8 @@ export async function searchTool(cwd: string, pattern: string): Promise<string> 
     }
   }
   await walk(cwd, 0);
-  return truncate(results.join("\n") || "لا نتائج — جرّب pattern أبسط");
+  if (results.length === 0) return "لا نتائج — جرّب pattern أبسط";
+  return preview(cwd, results.join("\n"));
 }
 
 export async function editTool(cwd: string, filePath: string, oldString: string, newString: string): Promise<string> {
@@ -87,8 +127,10 @@ export function runTool(cwd: string, command: string, timeoutMs = 120_000): Prom
   const [bin, ...args] = command.split(/\s+/);
   return new Promise((resolve) => {
     execFile(bin, args, { cwd, timeout: timeoutMs, maxBuffer: 51200 }, (err, stdout, stderr) => {
-      const out = truncate((stdout ?? "") + (stderr ? "\n[stderr]\n" + stderr : ""));
-      resolve(err ? `exit!=0:\n${out}` : out || "(no output)");
+      void (async () => {
+        const out = await preview(cwd, (stdout ?? "") + (stderr ? "\n[stderr]\n" + stderr : ""));
+        resolve(err ? `exit!=0:\n${out}` : out || "(no output)");
+      })();
     });
   });
 }

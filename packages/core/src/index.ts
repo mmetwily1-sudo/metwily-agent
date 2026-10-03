@@ -9,5 +9,5 @@ export interface AgentState {
   maxSteps?: number;
 }
 
-export { MAX_STEPS, mustReadBeforeEdit, runAgent } from "./agent.js";
-export type { RunOptions } from "./agent.js";
+export { MAX_STEPS, compactHistory, loadHistory, mustReadBeforeEdit, runAgent, saveHistory } from "./agent.js";
+export type { RunOptions, StoredMsg } from "./agent.js";
