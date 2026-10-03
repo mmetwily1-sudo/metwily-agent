@@ -6,6 +6,12 @@
     "strict": true,
     "skipLibCheck": true,
     "declaration": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@metwily/core/*": ["packages/core/src/*"],
+      "@metwily/llm/*": ["packages/llm/src/*"],
+      "@metwily/tools/*": ["packages/tools/src/*"]
+    }
   }
 }

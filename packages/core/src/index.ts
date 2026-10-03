@@ -9,16 +9,5 @@ export interface AgentState {
   maxSteps?: number;
 }
 
-export async function runLoop(state: AgentState): Promise<void> {
-  const max = state.maxSteps ?? 15;
-  // حد الأمان: budget guard
-  for (let i = state.steps; i < max; i++) {
-    // TODO: 1. observe 2. plan 3. act(tool) 4. verify
-    // قاعدة إجبارية: edit مرفوضة بدون read مسبق لنفس الملف
-    // قاعدة إجبارية: لا done قبل check=test أخضر
-    void i;
-    break;
-  }
-}
-
-export * from "./agent.js";
+export { MAX_STEPS, mustReadBeforeEdit, runAgent } from "./agent.js";
+export type { RunOptions } from "./agent.js";

@@ -1,1 +1,1 @@
-{"name":"@metwily/core","type":"module","version":"0.1.0"}
+{"dependencies":{"@metwily/llm":"workspace:*","@metwily/tools":"workspace:*","ai":"^6.0.0","zod":"^3.23.0"},"name":"@metwily/core","type":"module","version":"0.1.0"}
