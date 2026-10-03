@@ -3,8 +3,9 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stepCountIs, streamText, tool } from "ai";
+import type { LanguageModel } from "ai";
 import { z } from "zod";
-import { SYSTEM_AR, getModel } from "@metwily/llm/router.js";
+import { SYSTEM_AR, getGeminiFallbackModel, getModel, isQuotaError } from "@metwily/llm/router.js";
 import { loadConfig } from "@metwily/tools/config.js";
 import { editTool, readFiles, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
 import { autoCommitFile } from "@metwily/tools/git.js";
@@ -138,31 +139,46 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
       : {}),
   };
 
-  const result = streamText({
-    model: await getModel(cwd),
-    system:
-      (mode === "plan" ? SYSTEM_AR + "\nوضع PLAN: اعرض الخطة فقط، لا تستخدم edit/run." : SYSTEM_AR) +
-      "\nابدأ بأداة map لفهم المشروع قبل أي قراءة." +
-      (compacted ? "\n[ملاحظة: تم ضغط تاريخ الجلسة — اعتمد على الهدف الأصلي وآخر التبادلات.]" : "") +
-      (history.length > 0
-        ? "\n[سياق الجلسة السابقة مختصر — أكمل من حيث توقفت.]"
-        : ""),
-    prompt:
-      history.length > 0
-        ? `السياق السابق:\n${history.map((m) => `### ${m.role}\n${m.content.slice(0, 4000)}`).join("\n")}\n\n---\nالمطلوب الآن: ${prompt}`
-        : prompt,
-    tools,
-    stopWhen: stepCountIs(opts.maxSteps ?? cfg.maxSteps),
-  });
+  const systemText =
+    (mode === "plan" ? SYSTEM_AR + "\nوضع PLAN: اعرض الخطة فقط، لا تستخدم edit/run." : SYSTEM_AR) +
+    "\nابدأ بأداة map لفهم المشروع قبل أي قراءة." +
+    (compacted ? "\n[ملاحظة: تم ضغط تاريخ الجلسة — اعتمد على الهدف الأصلي وآخر التبادلات.]" : "") +
+    (history.length > 0 ? "\n[سياق الجلسة السابقة مختصر — أكمل من حيث توقفت.]" : "");
+  const promptText =
+    history.length > 0
+      ? `السياق السابق:\n${history.map((m) => `### ${m.role}\n${m.content.slice(0, 4000)}`).join("\n")}\n\n---\nالمطلوب الآن: ${prompt}`
+      : prompt;
 
-  let full = "";
-  for await (const delta of result.textStream) {
-    full += delta;
-    onText?.(delta);
+  const runOnce = async (model: LanguageModel): Promise<string> => {
+    const result = streamText({
+      model,
+      system: systemText,
+      prompt: promptText,
+      tools,
+      stopWhen: stepCountIs(opts.maxSteps ?? cfg.maxSteps),
+    });
+    let full = "";
+    for await (const delta of result.textStream) {
+      full += delta;
+      onText?.(delta);
+    }
+    // استهلاك كامل للستريم يضمن انتهاء كل خطوات الأدوات (stopWhen)
+    const settled = result as unknown as { finishReason?: Promise<unknown> };
+    await settled.finishReason?.catch(() => undefined);
+    return full;
+  };
+
+  // fallback تلقائي: عند نفاد الحصة جرّب بوابة OpenAI المتوافقة (حصة مستقلة).
+  let full: string;
+  try {
+    full = await runOnce(await getModel(cwd));
+  } catch (err) {
+    const fallback = getGeminiFallbackModel();
+    if (!isQuotaError(err) || !fallback) throw err;
+    onText?.("\n[الحصة الأساسية ممتلئة — التحويل للبوابة البديلة...]\n");
+    await audit(cwd, { tool: "fallback", reason: "quota" });
+    full = await runOnce(fallback);
   }
-  // استهلاك كامل للستريم يضمن انتهاء كل خطوات الأدوات (stopWhen)
-  const settled = result as unknown as { finishReason?: Promise<unknown> };
-  await settled.finishReason?.catch(() => undefined);
   const next = compactHistory(
     [...history, { role: "user", content: prompt }, { role: "assistant", content: full }],
     cfg.historyKeepLast,
