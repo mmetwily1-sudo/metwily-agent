@@ -3,13 +3,15 @@
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { loadConfig } from "./config.js";
+import { evaluateRun, tokenize } from "./policy.js";
 
 export const READ_SLICE_LINES = 50;
 export const MAX_FILE_LINES = 400;
 export const TOOL_OUTPUT_TRUNCATE = 2000;
 
-export const DENIED_PATTERNS = [/rm\s+-rf/, /sudo/, /curl.*\|\s*(ba)?sh/, /git\s+push/];
-export const ALLOW_RUN_PREFIX = ["bun", "npm", "pnpm", "npx tsc", "tsc", "git status", "git diff", "ls", "node"];
+// القوائم الافتراضية انتقلت إلى policy.ts (مصدر واحد) — تُضبط من metwily.json.
+export { DEFAULT_ALLOW_RUN, DEFAULT_DENY_PATTERNS } from "./policy.js";
 
 // يتتبع الملفات المقروءة — edit مرفوضة بدون read مسبق
 export const readFiles = new Set<string>();
@@ -116,21 +118,21 @@ export async function editTool(cwd: string, filePath: string, oldString: string,
   return `تم التعديل في ${filePath}`;
 }
 
-function denied(cmd: string): boolean {
-  return DENIED_PATTERNS.some((re) => re.test(cmd));
-}
-
-export function runTool(cwd: string, command: string, timeoutMs = 120_000): Promise<string> {
-  if (denied(command)) return Promise.resolve("TOOL_DENIED: أمر خطر مرفوض");
-  const ok = ALLOW_RUN_PREFIX.some((p) => command === p || command.startsWith(p + " ") || command.startsWith(p + "	"));
-  if (!ok) return Promise.resolve("TOOL_DENIED: خارج الـ allowlist — المتاح: " + ALLOW_RUN_PREFIX.join(", "));
-  const [bin, ...args] = command.split(/\s+/);
-  return new Promise((resolve) => {
-    execFile(bin, args, { cwd, timeout: timeoutMs, maxBuffer: 51200 }, (err, stdout, stderr) => {
-      void (async () => {
-        const out = await preview(cwd, (stdout ?? "") + (stderr ? "\n[stderr]\n" + stderr : ""));
-        resolve(err ? `exit!=0:\n${out}` : out || "(no output)");
-      })();
+export function runTool(cwd: string, command: string, timeoutMs?: number): Promise<string> {
+  return (async () => {
+    const cfg = await loadConfig(cwd);
+    const verdict = evaluateRun(command, cfg);
+    if (verdict.decision === "deny") return `TOOL_DENIED: ${verdict.reason}`;
+    const timeout = timeoutMs ?? cfg.runTimeoutMs ?? 120_000;
+    const [bin, ...args] = tokenize(command);
+    if (!bin) return "TOOL_DENIED: أمر فارغ";
+    return new Promise<string>((resolve) => {
+      execFile(bin, args, { cwd, timeout, maxBuffer: 51200 }, (err, stdout, stderr) => {
+        void (async () => {
+          const out = await preview(cwd, (stdout ?? "") + (stderr ? "\n[stderr]\n" + stderr : ""));
+          resolve(err ? `exit!=0:\n${out}` : out || "(no output)");
+        })();
+      });
     });
-  });
+  })();
 }

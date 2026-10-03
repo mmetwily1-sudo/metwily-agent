@@ -17,6 +17,9 @@ export interface MetwilyConfig {
   historyCharsCap: number;
   historyKeepLast: number;
   mcpServers?: Record<string, MCPServerConfigFile>;
+  allowRun?: string[];
+  denyRun?: string[];
+  runTimeoutMs?: number;
 }
 
 export const DEFAULT_CONFIG: MetwilyConfig = {

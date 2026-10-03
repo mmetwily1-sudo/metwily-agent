@@ -4,6 +4,9 @@
   "maxSteps": 15,
   "historyCharsCap": 60000,
   "historyKeepLast": 10,
+  "allowRun": ["bun", "npm", "pnpm", "tsc", "git status", "git diff", "git log", "ls", "node"],
+  "denyRun": ["format.*C:"],
+  "runTimeoutMs": 120000,
   "mcpServers": {
     "echo": { "command": "node", "args": ["./mcp-echo-server.mjs"] }
   }

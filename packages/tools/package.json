@@ -1,1 +1,1 @@
-{"exports":{"./check.js":"./src/check.ts","./config.js":"./src/config.ts","./fs.js":"./src/fs.ts","./git.js":"./src/git.ts","./mcp.js":"./src/mcp.ts","./repomap.js":"./src/repomap.ts"},"name":"@metwily/tools","type":"module","version":"0.1.0"}
+{"exports":{"./check.js":"./src/check.ts","./config.js":"./src/config.ts","./fs.js":"./src/fs.ts","./git.js":"./src/git.ts","./mcp.js":"./src/mcp.ts","./policy.js":"./src/policy.ts","./repomap.js":"./src/repomap.ts"},"name":"@metwily/tools","type":"module","version":"0.1.0"}
