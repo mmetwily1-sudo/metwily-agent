@@ -1,0 +1,1 @@
+{"description":"metwily-agent (متولي) — Arabic-first coding agent. TypeScript + Bun, CLI-first.","license":"Apache-2.0","name":"metwily-agent","packageManager":"pnpm@9.0.0","private":true,"type":"module","version":"0.1.0","workspaces":["packages/*"]}

@@ -1,0 +1,1 @@
+{"dependencies":{"@metwily/core":"workspace:*","@metwily/llm":"workspace:*","@metwily/tools":"workspace:*","clack":"^0.1.0","commander":"^12.0.0"},"name":"@metwily/cli","type":"module","version":"0.1.0"}
