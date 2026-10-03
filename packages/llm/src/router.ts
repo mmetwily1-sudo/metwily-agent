@@ -2,6 +2,7 @@
 // الشرح مصري، الكود إنجليزي. النية العربية تترجم لـ intent داخلي.
 import { deepseek } from "@ai-sdk/deepseek";
 import type { LanguageModel } from "ai";
+import { loadConfig } from "@metwily/tools/config.js";
 
 export const SYSTEM_AR = `أنت "متولي" — coding agent عربي أولاً.
 - اشرح والخطط بالمصري المختصر. الكود والكوميت بالإنجليزية.
@@ -12,9 +13,10 @@ export const SYSTEM_AR = `أنت "متولي" — coding agent عربي أولا
 
 export type ModelId = "deepseek-chat" | "deepseek-reasoner";
 
-export function getModelId(): ModelId {
-  const m = (process.env.METWILY_MODEL ?? "deepseek-chat").trim();
-  return m === "deepseek-reasoner" ? "deepseek-reasoner" : "deepseek-chat";
+export async function getModelId(cwd = process.cwd()): Promise<ModelId> {
+  const env = (process.env.METWILY_MODEL ?? "").trim();
+  if (env === "deepseek-reasoner" || env === "deepseek-chat") return env;
+  return (await loadConfig(cwd)).model;
 }
 
 export function requireApiKey(): string {
@@ -27,9 +29,9 @@ export function requireApiKey(): string {
   return key;
 }
 
-export function getModel(): LanguageModel {
+export async function getModel(cwd = process.cwd()): Promise<LanguageModel> {
   requireApiKey(); // الـ SDK يقرأ DEEPSEEK_API_KEY من البيئة
-  return deepseek(getModelId());
+  return deepseek(await getModelId(cwd));
 }
 
 export * from "./intent.js";

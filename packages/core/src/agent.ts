@@ -5,12 +5,13 @@ import path from "node:path";
 import { stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
 import { SYSTEM_AR, getModel } from "@metwily/llm/router.js";
-import { editTool, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
+import { loadConfig } from "@metwily/tools/config.js";
+import { editTool, readFiles, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
+import { autoCommitFile } from "@metwily/tools/git.js";
+import { buildRepoMap } from "@metwily/tools/repomap.js";
 
 export const MAX_STEPS = 15;
 export const COMPACTION_AT = 0.7;
-export const READ_SLICE_LINES = 50;
-export const TOOL_OUTPUT_TRUNCATE = 2000;
 
 export function mustReadBeforeEdit(readFiles: Set<string>, file: string): boolean {
   return readFiles.has(file);
@@ -20,6 +21,8 @@ export interface RunOptions {
   cwd: string;
   mode: "plan" | "build";
   onText?: (delta: string) => void;
+  autoCommit?: boolean; // يتجاوز config (يُستخدم مع --no-commit)
+  maxSteps?: number; // يتجاوز config
 }
 
 // درس opencode/compaction.ts + session persistence:
@@ -33,6 +36,8 @@ export interface StoredMsg {
 
 const HISTORY_CHARS_CAP = 60_000;
 const HISTORY_KEEP_LAST = 10;
+void HISTORY_CHARS_CAP;
+void HISTORY_KEEP_LAST;
 
 export async function loadHistory(cwd: string): Promise<StoredMsg[]> {
   const raw = await readFile(path.join(cwd, ".metwily", "state.json"), "utf8").catch(() => "");
@@ -45,11 +50,15 @@ export async function loadHistory(cwd: string): Promise<StoredMsg[]> {
   }
 }
 
-export function compactHistory(history: StoredMsg[]): { history: StoredMsg[]; compacted: boolean } {
+export function compactHistory(
+  history: StoredMsg[],
+  keepLast = 10,
+  charsCap = 60_000
+): { history: StoredMsg[]; compacted: boolean } {
   const total = history.reduce((n, m) => n + m.content.length, 0);
-  if (history.length <= HISTORY_KEEP_LAST + 1 || total <= HISTORY_CHARS_CAP) return { history, compacted: false };
+  if (history.length <= keepLast + 1 || total <= charsCap) return { history, compacted: false };
   const head = history[0];
-  const tail = history.slice(-HISTORY_KEEP_LAST);
+  const tail = history.slice(-keepLast);
   const dropped = history.length - tail.length - 1;
   const marker: StoredMsg = {
     role: "assistant",
@@ -72,9 +81,20 @@ async function audit(cwd: string, entry: Record<string, unknown>): Promise<void>
 
 export async function runAgent(prompt: string, opts: RunOptions): Promise<string> {
   const { cwd, mode, onText } = opts;
+  const cfg = await loadConfig(cwd);
+  const autoCommit = opts.autoCommit ?? cfg.autoCommit;
   const rawHistory = await loadHistory(cwd);
-  const { history, compacted } = compactHistory(rawHistory);
+  const { history, compacted } = compactHistory(rawHistory, cfg.historyKeepLast, cfg.historyCharsCap);
   const tools = {
+    map: tool({
+      description: "خريطة رموز الريبو (PageRank) — ابدأ بها لفهم المشروع قبل القراءة.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const out = await buildRepoMap(cwd, readFiles);
+        await audit(cwd, { tool: "map", chars: out.length });
+        return out;
+      },
+    }),
     read: tool({
       description: "قراءة شريحة من ملف (offset/limit). إجباري قبل أي edit.",
       inputSchema: z.object({ filePath: z.string(), offset: z.number().default(1), limit: z.number().default(50) }),
@@ -100,8 +120,9 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
             inputSchema: z.object({ filePath: z.string(), oldString: z.string(), newString: z.string() }),
             execute: async ({ filePath, oldString, newString }) => {
               const out = await editTool(cwd, filePath, oldString, newString);
-              await audit(cwd, { tool: "edit", filePath });
-              return out;
+              const committed = await autoCommitFile(cwd, filePath, autoCommit);
+              await audit(cwd, { tool: "edit", filePath, committed: Boolean(committed) });
+              return out + committed;
             },
           }),
           run: tool({
@@ -118,9 +139,10 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   };
 
   const result = streamText({
-    model: getModel(),
+    model: await getModel(cwd),
     system:
       (mode === "plan" ? SYSTEM_AR + "\nوضع PLAN: اعرض الخطة فقط، لا تستخدم edit/run." : SYSTEM_AR) +
+      "\nابدأ بأداة map لفهم المشروع قبل أي قراءة." +
       (compacted ? "\n[ملاحظة: تم ضغط تاريخ الجلسة — اعتمد على الهدف الأصلي وآخر التبادلات.]" : "") +
       (history.length > 0
         ? "\n[سياق الجلسة السابقة مختصر — أكمل من حيث توقفت.]"
@@ -130,7 +152,7 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
         ? `السياق السابق:\n${history.map((m) => `### ${m.role}\n${m.content.slice(0, 4000)}`).join("\n")}\n\n---\nالمطلوب الآن: ${prompt}`
         : prompt,
     tools,
-    stopWhen: stepCountIs(MAX_STEPS),
+    stopWhen: stepCountIs(opts.maxSteps ?? cfg.maxSteps),
   });
 
   let full = "";
@@ -141,7 +163,11 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   // استهلاك كامل للستريم يضمن انتهاء كل خطوات الأدوات (stopWhen)
   const settled = result as unknown as { finishReason?: Promise<unknown> };
   await settled.finishReason?.catch(() => undefined);
-  const next = compactHistory([...history, { role: "user", content: prompt }, { role: "assistant", content: full }]).history;
+  const next = compactHistory(
+    [...history, { role: "user", content: prompt }, { role: "assistant", content: full }],
+    cfg.historyKeepLast,
+    cfg.historyCharsCap
+  ).history;
   await saveHistory(cwd, next);
   await audit(cwd, { tool: "done", mode, chars: full.length, compacted });
   return full;

@@ -23,8 +23,9 @@ program
   .argument("[prompt]", "الأمر أو النية (عربي أو إنجليزي)")
   .option("--plan", "عرض الخطة فقط بدون تنفيذ (read/search فقط)")
   .option("--resume", "إكمال آخر جلسة")
+  .option("--no-commit", "تعطيل الـ auto-commit لهذه الجلسة")
   .option("-C, --cwd <dir>", "مجلد العمل", process.cwd())
-  .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; cwd: string }) => {
+  .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; commit?: boolean; cwd: string }) => {
     if (opts.resume) {
       const history = await loadHistory(opts.cwd);
       if (history.length === 0) {
@@ -52,6 +53,7 @@ program
       const out = await runAgent(prompt, {
         cwd: opts.cwd,
         mode,
+        autoCommit: opts.commit === false ? false : undefined,
         onText: (d: string) => process.stdout.write(d),
       });
       void out;

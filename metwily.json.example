@@ -1,0 +1,7 @@
+{
+  "model": "deepseek-chat",
+  "autoCommit": true,
+  "maxSteps": 15,
+  "historyCharsCap": 60000,
+  "historyKeepLast": 10
+}
