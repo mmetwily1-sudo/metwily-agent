@@ -69,7 +69,7 @@ program
       } else if (/401|invalid.*key|unauthorized/i.test(msg)) {
         console.error("\n⚠️ المفتاح مرفوض (401) — تأكد من DEEPSEEK_API_KEY.");
       } else if (/429|quota|rate.?limit|resource.?exhausted/i.test(msg)) {
-        console.error("\n⚠️ حصة Gemini المجانية خلصت مؤقتاً (429) — انتظر دقيقة أو بدّل المفتاح (GEMINI_API_KEY_2).");
+        console.error("\n⚠️ حصة Gemini المجانية خلصت مؤقتاً (429) — انتظر دقيقة أو أضف مفاتيح تناوب (GEMINI_API_KEY_2..6).");
       } else {
         console.error("\n❌ خطأ: " + msg.slice(0, 300));
       }

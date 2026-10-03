@@ -5,7 +5,7 @@ import path from "node:path";
 import { stepCountIs, streamText, tool } from "ai";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
-import { SYSTEM_AR, getGeminiFallbackModel, getModel, isQuotaError } from "@metwily/llm/router.js";
+import { SYSTEM_AR, getCandidateModels, isQuotaError } from "@metwily/llm/router.js";
 import { loadConfig } from "@metwily/tools/config.js";
 import { editTool, readFiles, readTool, runTool, searchTool } from "@metwily/tools/fs.js";
 import { autoCommitFile } from "@metwily/tools/git.js";
@@ -168,17 +168,22 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
     return full;
   };
 
-  // fallback تلقائي: عند نفاد الحصة جرّب بوابة OpenAI المتوافقة (حصة مستقلة).
-  let full: string;
-  try {
-    full = await runOnce(await getModel(cwd));
-  } catch (err) {
-    const fallback = getGeminiFallbackModel();
-    if (!isQuotaError(err) || !fallback) throw err;
-    onText?.("\n[الحصة الأساسية ممتلئة — التحويل للبوابة البديلة...]\n");
-    await audit(cwd, { tool: "fallback", reason: "quota" });
-    full = await runOnce(fallback);
+  // تناوب تلقائي: عند نفاد الحصة جرّب المفتاح التالي، ثم البوابة البديلة أخيراً.
+  const candidates = await getCandidateModels(cwd);
+  let full: string | undefined;
+  let lastErr: unknown;
+  for (let i = 0; i < candidates.length; i++) {
+    try {
+      full = await runOnce(candidates[i]);
+      if (i > 0) await audit(cwd, { tool: "fallback", candidate: i });
+      break;
+    } catch (err) {
+      if (!isQuotaError(err)) throw err;
+      lastErr = err;
+      onText?.(`\n[الحصة ممتلئة — تجربة البديل ${i + 1}/${candidates.length - 1}...]\n`);
+    }
   }
+  if (full === undefined) throw lastErr;
   const next = compactHistory(
     [...history, { role: "user", content: prompt }, { role: "assistant", content: full }],
     cfg.historyKeepLast,

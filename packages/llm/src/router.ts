@@ -29,9 +29,14 @@ export function deepseekKey(): string {
 }
 
 export function geminiKeys(): string[] {
-  return [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2]
-    .map((k) => (k ?? "").trim())
-    .filter((k) => k.length > 0);
+  // GEMINI_API_KEY ثم _2 .. _9 (نفس اتفاقية منارة، موسعة لستة مفاتيح)
+  const out: string[] = [];
+  for (let i = 0; i <= 9; i++) {
+    const name = i === 0 ? "GEMINI_API_KEY" : `GEMINI_API_KEY_${i}`;
+    const v = (process.env[name] ?? "").trim();
+    if (v) out.push(v);
+  }
+  return out;
 }
 
 export function requireApiKey(): string {
@@ -48,31 +53,28 @@ export function geminiKeyAt(index: number): string | undefined {
   return keys[index % keys.length];
 }
 
-export async function getModel(cwd = process.cwd()): Promise<LanguageModel> {
-  if (deepseekKey()) return deepseek(await getModelId(cwd)); // الـ SDK يقرأ المفتاح من البيئة
-  const gkeys = geminiKeys();
-  if (gkeys.length > 0) {
-    // مزود جوجل يقرأ GOOGLE_GENERATIVE_AI_API_KEY — نمرر GEMINI_API_KEY صراحةً (نفس اتفاقية منارة)
-    const g = createGoogleGenerativeAI({ apiKey: gkeys[0] });
-    const geminiModel = (process.env.METWILY_GEMINI_MODEL ?? "gemini-3.8-flash").trim();
-    return g(geminiModel);
-  }
-  requireApiKey();
-  throw new Error("unreachable");
-}
-
+// قائمة المرشحين بالترتيب: الأساسي أولاً، ثم تناوب المفاتيح، ثم البوابة البديلة أخيراً.
 // درس المعرفة (ai-agent-learning.md): بوابة OpenAI المتوافقة لـGemini (/v1beta/openai)
-// لها حصة مستقلة — تعمل عندما تموت :generateContent. تُستخدم كـ fallback تلقائي.
-export function getGeminiFallbackModel(): LanguageModel | undefined {
-  const gkeys = geminiKeys();
-  if (gkeys.length === 0) return undefined;
+// لها حصة مستقلة — تعمل عندما تموت :generateContent.
+export async function getCandidateModels(cwd = process.cwd()): Promise<LanguageModel[]> {
+  if (deepseekKey()) return [deepseek(await getModelId(cwd))];
+  const keys = geminiKeys();
+  if (keys.length === 0) {
+    requireApiKey();
+    throw new Error("unreachable");
+  }
+  const geminiModel = (process.env.METWILY_GEMINI_MODEL ?? "gemini-3.8-flash").trim();
+  const primaries = keys.map((apiKey) => createGoogleGenerativeAI({ apiKey })(geminiModel));
   const gw = createOpenAICompatible({
     name: "gemini-openai-gateway",
-    apiKey: gkeys[gkeys.length - 1],
+    apiKey: keys[keys.length - 1],
     baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
   });
-  const geminiModel = (process.env.METWILY_GEMINI_MODEL ?? "gemini-3.8-flash").trim();
-  return gw(geminiModel);
+  return [...primaries, gw(geminiModel)];
+}
+
+export async function getModel(cwd = process.cwd()): Promise<LanguageModel> {
+  return (await getCandidateModels(cwd))[0];
 }
 
 export function isQuotaError(err: unknown): boolean {
