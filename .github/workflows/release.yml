@@ -1,0 +1,41 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --notes "metwily-agent (متولي) ${{ github.ref_name }} — binaries لويندوز ولينكس وماك"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build:
+    needs: create
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            out: metwily-linux
+          - os: windows-latest
+            target: bun-windows-x64
+            out: metwily.exe
+          - os: macos-latest
+            target: bun-darwin-arm64
+            out: metwily-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 23
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: bun build packages/cli/src/index.ts --compile --target=${{ matrix.target }} --outfile ${{ matrix.out }}
+      - run: gh release upload "${{ github.ref_name }}" "${{ matrix.out }}" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
