@@ -182,7 +182,11 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
     const settled = result as unknown as { finishReason?: Promise<unknown>; usage?: Promise<TokenUsage> };
     await settled.finishReason?.catch(() => undefined);
     const usage = await settled.usage?.catch(() => undefined);
-    return { text: full, usage };
+    // بعض المزودات (Ollama) لا ترجع usage — صفّر القيم الناقصة بدل undefined
+    const safeUsage: TokenUsage | undefined = usage
+      ? { inputTokens: usage.inputTokens ?? 0, outputTokens: usage.outputTokens ?? 0 }
+      : undefined;
+    return { text: full, usage: safeUsage };
   };
 
   // تناوب تلقائي: عند نفاد الحصة جرّب المرشح التالي (مفتاح/ollama/بوابة).
