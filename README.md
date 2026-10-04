@@ -18,7 +18,7 @@ Arabic-first coding agent — TypeScript + Bun, CLI-first.
 pnpm install
 # المفاتيح (متغيرات بيئة فقط — لا تُحفظ في ملفات):
 # DeepSeek مدفوع: set DEEPSEEK_API_KEY=sk-...
-# Gemini مجاني بتناوب: GEMINI_API_KEY ثم _2 إلى _6 (من aistudio.google.com)
+# Gemini مجاني بتناوب: GEMINI_API_KEY ثم _2 إلى _6 (من aistudio.google.com) — يتناوب الوكيل تلقائياً عند نفاد الحصة
 # محلي: METWILY_PROVIDER=ollama (+ AGENT_LLM_URL/MODEL)
 
 pnpm exec tsx packages/cli/src/index.ts "زود صفحة تسعير"
