@@ -25,7 +25,8 @@
 - [ ] Web UI فوق نفس الـ API
 
 ## v1.0 — الإطلاق
-- [ ] binary واحد (`bun build --compile` → metwily.exe)
+- [x] binary واحد (`bun build --compile` → metwily.exe يعمل + --resume يقرأ الجلسات) — 2026-10-04
+- [x] CI يشغّل tsc + smoke كاملة + فحص نظافة (28 اختباراً)
 - [ ] نشر Fly.io + Vercel
 - [ ] mini-eval خاص (25 مهمة) + تقرير دقة صادق
 - [ ] رخصة Apache-2.0 + إعلان عام

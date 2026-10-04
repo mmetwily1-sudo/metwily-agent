@@ -10,22 +10,36 @@ Arabic-first coding agent — TypeScript + Bun, CLI-first.
 - **Hosting:** Fly.io (worker) + Vercel (UI لاحقاً)
 - **Loop:** observe → plan → act → verify + budget guard
 
-## MVP (5 أدوات)
-`read` + `search` + `edit` + `run` + `check`
+## الأدوات (9)
+`map` + `read` + `search` + `check` + `edit` + `run` + أي سيرفرات MCP من `metwily.json`
 
-## تشغيل
+## التشغيل
 ```bash
 pnpm install
-pnpm --filter @metwily/cli dev "زود صفحة تسعير"
-pnpm --filter @metwily/cli dev --plan "ابني SaaS"
+# المفاتيح (متغيرات بيئة فقط — لا تُحفظ في ملفات):
+# DeepSeek مدفوع: set DEEPSEEK_API_KEY=sk-...
+# Gemini مجاني بتناوب: GEMINI_API_KEY ثم _2 إلى _6 (من aistudio.google.com)
+# محلي: METWILY_PROVIDER=ollama (+ AGENT_LLM_URL/MODEL)
+
+pnpm exec tsx packages/cli/src/index.ts "زود صفحة تسعير"
+pnpm exec tsx packages/cli/src/index.ts --plan "ابني SaaS"
+pnpm exec tsx packages/cli/src/index.ts --resume   # إكمال الجلسة السابقة
+```
+
+## binary واحد (Bun)
+```bash
+bun build packages/cli/src/index.ts --compile --outfile metwily.exe
+./metwily.exe --help
 ```
 
 ## الهيكل
 ```
-packages/core/   # agent loop + context + repo-map
-packages/tools/  # fs, shell, git (ACI مجردة)
-packages/llm/    # intent عربي + provider abstraction
-packages/cli/    # binary `metwily` (commander + clack)
+packages/core/   # agent loop + context + compaction + MCP loader
+packages/tools/  # map/read/search/check/edit/run + policy + git + repomap + mcp
+packages/llm/    # intent عربي + router (deepseek/gemini/ollama) + costs
+packages/cli/    # binary `metwily`
 skills/          # SKILL.md متوافق مع Claude/opencode
+scripts/         # smoke.mts (28 اختباراً) + سيرفر MCP وهمي
+docs/            # ROADMAP + دروس opencode/Aider
 infra/           # fly.toml + Dockerfile
 ```

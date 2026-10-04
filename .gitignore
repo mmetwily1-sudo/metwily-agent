@@ -4,3 +4,6 @@ dist/
 .metwily/tmp/
 *.log
 .DS_Store
+metwily.exe
+metwily-linux
+metwily-macos

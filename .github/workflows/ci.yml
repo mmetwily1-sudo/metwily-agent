@@ -15,5 +15,7 @@ jobs:
         with:
           node-version: 23
           cache: pnpm
-      - run: pnpm install --frozen-lockfile=false
+      - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit -p tsconfig.base.json
+      - run: pnpm exec tsx scripts/smoke.mts
+      - run: test -z "$(git status --short)" || (echo "smoke leftovers:" && git status --short && exit 1)
