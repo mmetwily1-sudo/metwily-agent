@@ -1,5 +1,5 @@
 // smoke test للأدوات — يعمل من جذر الريبو عبر tsx (لا يحتاج API key)
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { editTool, readFiles, readTool, runTool, searchTool } from "../packages/tools/src/fs.js";
 import { compactHistory } from "../packages/core/src/agent.js";
@@ -8,6 +8,7 @@ import { buildRepoMap } from "../packages/tools/src/repomap.js";
 import { autoCommitFile, isGitRepo } from "../packages/tools/src/git.js";
 import { DEFAULT_CONFIG, loadConfig } from "../packages/tools/src/config.js";
 import { checkTool } from "../packages/tools/src/check.js";
+import { exportDataset, redact } from "./export-dataset.js";
 import { evaluateRun, tokenize } from "../packages/tools/src/policy.js";
 import { clearConfigCache } from "../packages/tools/src/config.js";
 import { MCPClient } from "../packages/tools/src/mcp.js";
@@ -181,6 +182,32 @@ const cfg2 = await loadConfig(cfgDir);
 await rm(cfgDir, { recursive: true, force: true });
 ok("دمج الضبط", cfg2.maxSteps === 5 && (cfg2.allowRun ?? []).includes("echo") && cfg2.autoCommit === true, `maxSteps=${cfg2.maxSteps}`);
 
+// 29. التنقية تخفي الأسرار بأنواعها
+const sec = redact("key=sk-abc123XYZ and AQ.Ab8test123 and AIzaTest123456 and Bearer tok123456");
+ok("التنقية تخفي", sec.count >= 4 && !sec.text.includes("sk-abc123XYZ") && sec.text.includes("<REDACTED>"), `n=${sec.count}`);
+
+// 30-31. المصدّر على بيانات وهمية: محادثة + مسار أدوات + إحصاء
+const dsDir = path.join(cwd, "tmp-dataset-smoke");
+await rm(dsDir, { recursive: true, force: true });
+await mkdir(path.join(dsDir, ".metwily"), { recursive: true });
+await writeFile(
+  path.join(dsDir, ".metwily", "state.json"),
+  JSON.stringify({ messages: [{ role: "user", content: "اشرح README" }, { role: "assistant", content: "تمام sk-fakeKey123" }] }),
+  "utf8"
+);
+await writeFile(
+  path.join(dsDir, ".metwily", "audit.log.jsonl"),
+  ['{"ts":"t","tool":"map","chars":10}', '{"ts":"t","tool":"done","mode":"plan"}'].join("\n"),
+  "utf8"
+);
+const stats = await exportDataset(dsDir, path.join(dsDir, "out"));
+const convRaw = await readFile(path.join(dsDir, "out", "conversations.jsonl"), "utf8");
+const conv = JSON.parse(convRaw) as { messages: Array<{ role: string; content: string }> };
+ok("تصدير محادثة FT", conv.messages.length === 3 && conv.messages[0].role === "system" && !convRaw.includes("sk-fakeKey123"), `${stats.conversations} conv`);
+const trailRaw = await readFile(path.join(dsDir, "out", "tool-trail.jsonl"), "utf8");
+ok("مسار الأدوات", trailRaw.includes('"map"') && !trailRaw.includes('"done"') && stats.toolEvents === 1, `${stats.toolEvents} events`);
+await rm(dsDir, { recursive: true, force: true });
+
 await rm(scratch, { recursive: true, force: true });
-console.log(`\nالنتيجة: ${pass}/28`);
-if (pass !== 28) process.exitCode = 1;
+console.log(`\nالنتيجة: ${pass}/31`);
+if (pass !== 31) process.exitCode = 1;

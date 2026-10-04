@@ -40,11 +40,6 @@ export interface StoredMsg {
   content: string;
 }
 
-const HISTORY_CHARS_CAP = 60_000;
-const HISTORY_KEEP_LAST = 10;
-void HISTORY_CHARS_CAP;
-void HISTORY_KEEP_LAST;
-
 export async function loadHistory(cwd: string): Promise<StoredMsg[]> {
   const raw = await readFile(path.join(cwd, ".metwily", "state.json"), "utf8").catch(() => "");
   if (!raw) return [];
@@ -79,14 +74,22 @@ export async function saveHistory(cwd: string, history: StoredMsg[]): Promise<vo
   await writeFile(path.join(dir, "state.json"), JSON.stringify({ messages: history }, null, 2), "utf8").catch(() => {});
 }
 
+// كل تشغيل له session id يُرفق بكل سطر تدقيق — أساس ربط trajectories بالجلسات (v2 للضبط).
+let sessionSeq = 0;
+let currentSession = "";
+
 async function audit(cwd: string, entry: Record<string, unknown>): Promise<void> {
   const dir = path.join(cwd, ".metwily");
   await mkdir(dir, { recursive: true }).catch(() => {});
-  await appendFile(path.join(dir, "audit.log.jsonl"), JSON.stringify({ ts: new Date().toISOString(), ...entry }) + "\n").catch(() => {});
+  await appendFile(
+    path.join(dir, "audit.log.jsonl"),
+    JSON.stringify({ ts: new Date().toISOString(), session: currentSession, ...entry }) + "\n"
+  ).catch(() => {});
 }
 
 export async function runAgent(prompt: string, opts: RunOptions): Promise<string> {
   const { cwd, mode, onText } = opts;
+  currentSession = `${Date.now().toString(36)}-${++sessionSeq}`;
   const cfg = await loadConfig(cwd);
   const autoCommit = opts.autoCommit ?? cfg.autoCommit;
   const rawHistory = await loadHistory(cwd);
