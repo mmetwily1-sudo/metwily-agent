@@ -101,6 +101,28 @@ results.push(await scenario("session-resume", async () => {
   return `ضُغطت 14 → ${history.length} + roundtrip سليم`;
 }));
 
+// 6. حلقة التحقق الكاملة: كسر → check أحمر → read → edit → check أخضر (قلب الـ verify loop)
+results.push(await scenario("verify-loop", async () => {
+  const fix = path.join(cwd, "tmp-eval-fix");
+  await rm(fix, { recursive: true, force: true });
+  await mkdir(fix, { recursive: true });
+  await writeFile(
+    path.join(fix, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { strict: true, noEmit: true }, include: ["bad.ts"] }),
+    "utf8"
+  );
+  await writeFile(path.join(fix, "bad.ts"), 'export const x: number = "oops";\n', "utf8");
+  const { checkTool } = await import("../packages/tools/src/check.js");
+  const red = await checkTool(fix);
+  assert(red.startsWith("FAIL"), `كان يجب أن يفشل: ${red.slice(0, 80)}`);
+  await readTool(fix, "bad.ts");
+  await editTool(fix, "bad.ts", '"oops"', "42");
+  const green = await checkTool(fix);
+  await rm(fix, { recursive: true, force: true });
+  assert(green.startsWith("✅"), `كان يجب أن ينجح: ${green.slice(0, 80)}`);
+  return "أحمر → إصلاح → أخضر";
+}));
+
 await rm(scratch, { recursive: true, force: true });
 
 console.log("\n== mini-eval ==");
