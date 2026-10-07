@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { runAgent } from "@metwily/core/index.js";
 
-const WEB_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "web");
+const WEB_DIR =
+  (process.env.METWILY_WEB_DIR ?? "").trim() ||
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "web");
 
 function json(res: ServerResponse, code: number, obj: unknown): void {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
@@ -30,7 +32,7 @@ export interface ServerHandle {
   close: () => Promise<void>;
 }
 
-export async function startServer(port: number): Promise<ServerHandle> {
+export async function startServer(port: number, host = "127.0.0.1"): Promise<ServerHandle> {
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://x");
@@ -83,11 +85,12 @@ export async function startServer(port: number): Promise<ServerHandle> {
       json(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
   });
-  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
   const addr = server.address();
   const realPort = typeof addr === "object" && addr ? addr.port : port;
+  const shownHost = host === "0.0.0.0" ? "127.0.0.1" : host;
   return {
-    url: `http://127.0.0.1:${realPort}`,
+    url: `http://${shownHost}:${realPort}`,
     close: () => new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
 }

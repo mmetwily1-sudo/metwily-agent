@@ -2,7 +2,7 @@ app = "metwily-agent"
 primary_region = "fra"
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = "infra/Dockerfile"
 
 [http_service]
   internal_port = 3000
