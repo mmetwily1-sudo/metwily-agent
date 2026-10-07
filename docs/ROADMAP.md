@@ -19,6 +19,8 @@
 
 ## v0.3 — الاستقلال والقوة
 - [x] عميل MCP stdio (handshake/list/call/timeout) + تحميل `mcpServers` من metwily.json كأدوات dynamic — 2026-10-04
+- [x] مزود echo الحتمي + اختبار E2E حقيقي للـ loop (3/3) بدون حصة — 2026-10-04
+- [x] سيرفر API (healthz/chat-SSE) + صفحة ويب عربية + `metwily serve` + اختبار سيرفر (4/4) — 2026-10-04
 - [x] محرك سياسة مركزي (`policy.ts`: allow/deny من الضبط + تحليل اقتباس سليم) — أساس الـ sandbox — 2026-10-04
 - [ ] موديل محلي عبر Ollama كمزوّد ثالث (مكوّد، التشغيل الحي عند تثبيت Ollama)
 - [ ] sandbox تنفيذي (Docker+gVisor) فوق نفس واجهة السياسة

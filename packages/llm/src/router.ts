@@ -5,6 +5,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { loadConfig } from "@metwily/tools/config.js";
+import { echoModel } from "./echo.js";
 
 // درس المعرفة: مفتاحا Gemini بتناوب (GEMINI_API_KEY + GEMINI_API_KEY_2)
 // لأن الحصة المجانية هي عنق الزجاجة — التناوب مذكور في vision.ts لمنارة.
@@ -73,10 +74,13 @@ export function geminiKeyAt(index: number): string | undefined {
   return keys[index % keys.length];
 }
 
-// قائمة المرشحين بالترتيب: deepseek المدفوع ← ollama المحلي (إن ضُبط) ← مفاتيح Gemini ← البوابة البديلة.
+// قائمة المرشحين بالترتيب: echo الحتمي (إن طُلب) ← deepseek ← ollama ← مفاتيح Gemini ← البوابة.
 // درس المعرفة (ai-agent-learning.md): بوابة OpenAI المتوافقة لـGemini (/v1beta/openai)
 // لها حصة مستقلة — تعمل عندما تموت :generateContent.
 export async function getCandidateModels(cwd = process.cwd()): Promise<Array<{ label: string; model: LanguageModel }>> {
+  if ((process.env.METWILY_PROVIDER ?? "").trim().toLowerCase() === "echo") {
+    return [{ label: "echo/demo", model: echoModel() }];
+  }
   if (deepseekKey()) {
     const id = await getModelId(cwd);
     return [{ label: `deepseek/${id}`, model: deepseek(id) }];

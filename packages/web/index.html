@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>متولي — واجهة تجريبية</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+#out { white-space: pre-wrap; border: 1px solid #ccc; padding: 1rem; min-height: 200px; }
+textarea { width: 100%; height: 80px; }
+button { padding: .5rem 1.5rem; margin-top: .5rem; }
+</style>
+</head>
+<body>
+<h1>متولي 🤖 (تجريبي)</h1>
+<textarea id="prompt" placeholder="اكتب مهمتك هنا..."></textarea><br>
+<button onclick="send('plan')">خطة</button>
+<button onclick="send('build')">تنفيذ</button>
+<pre id="out"></pre>
+<script>
+async function send(mode) {
+  const out = document.getElementById('out');
+  out.textContent = '';
+  const res = await fetch('/v1/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: document.getElementById('prompt').value, mode })
+  });
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop();
+    for (const p of parts) {
+      if (!p.startsWith('data: ')) continue;
+      const data = JSON.parse(p.slice(6));
+      if (data === '[DONE]') { out.textContent += '\n— تم —'; return; }
+      if (data.delta) out.textContent += data.delta;
+      if (data.usage) out.textContent += '\n' + JSON.stringify(data.usage);
+      if (data.error) { out.textContent += '\nخطأ: ' + data.error; return; }
+    }
+  }
+}
+</script>
+</body>
+</html>

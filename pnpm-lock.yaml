@@ -26,6 +26,9 @@ importers:
       '@metwily/llm':
         specifier: workspace:*
         version: link:../llm
+      '@metwily/server':
+        specifier: workspace:*
+        version: link:../server
       '@metwily/tools':
         specifier: workspace:*
         version: link:../tools
@@ -62,6 +65,9 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: ^2.0.81
         version: 2.0.81(zod@3.25.76)
+      '@ai-sdk/provider':
+        specifier: '3'
+        version: 3.0.18
       '@metwily/tools':
         specifier: workspace:*
         version: link:../tools
@@ -71,6 +77,12 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
+
+  packages/server:
+    dependencies:
+      '@metwily/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/tools: {}
 

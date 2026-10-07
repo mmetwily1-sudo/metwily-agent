@@ -4,6 +4,7 @@ import { createInterface } from "node:readline";
 import { Command } from "commander";
 import { loadHistory, runAgent } from "@metwily/core/index.js";
 import { detectIntent } from "@metwily/llm/intent.js";
+import { startServer } from "@metwily/server/index.js";
 
 // درس opencode: تأكيد بشري قبل التنفيذ في وضع build (طبقة permission خفيفة).
 async function confirmBuild(): Promise<boolean> {
@@ -25,8 +26,16 @@ program
   .option("--resume", "إكمال آخر جلسة")
   .option("--no-commit", "تعطيل الـ auto-commit لهذه الجلسة")
   .option("--model <id>", "تجاوز الموديل (deepseek-chat/reasoner أو gemini-xxx)")
+  .option("--port <n>", "منفذ السيرفر مع (serve)", "3847")
   .option("-C, --cwd <dir>", "مجلد العمل", process.cwd())
-  .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; commit?: boolean; model?: string; cwd: string }) => {
+  .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; commit?: boolean; model?: string; port?: string; cwd: string }) => {
+    if (prompt === "serve") {
+      const port = Number(opts.port ?? 3847) || 3847;
+      const handle = await startServer(port);
+      console.log(`متولي يعمل على ${handle.url} — أوقفه بـ Ctrl+C`);
+      await new Promise(() => {});
+      return;
+    }
     if (opts.resume) {
       const history = await loadHistory(opts.cwd);
       if (history.length === 0) {

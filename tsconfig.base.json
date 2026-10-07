@@ -11,7 +11,8 @@
     "paths": {
       "@metwily/core/*": ["packages/core/src/*"],
       "@metwily/llm/*": ["packages/llm/src/*"],
-      "@metwily/tools/*": ["packages/tools/src/*"]
+      "@metwily/server/*": ["packages/server/src/*"],
+      "@metwily/tools/*": ["packages/tools/*"]
     }
   }
 }

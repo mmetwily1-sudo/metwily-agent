@@ -16,4 +16,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsc --noEmit -p tsconfig.base.json
       - run: pnpm exec tsx scripts/smoke.mts
+      - run: pnpm exec tsx scripts/eval.mts
+      - run: pnpm exec tsx scripts/e2e.mts
+      - run: pnpm exec tsx scripts/server-test.mts
       - run: test -z "$(git status --short)" || (echo "smoke leftovers:" && git status --short && exit 1)
