@@ -158,20 +158,43 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
     ...mcp.tools,
   };
 
-  const systemText =
+  // الموديلات المحلية (3B) تحتاج system قصير بالإنجليزي — النظام العربي الطويل يخلّيها ترفض.
+  const LOCAL_SYSTEM = `You are metwily, an Arabic-first coding agent CLI on Windows.
+You have full permission to read and edit files in the workspace and to run allowed commands.
+Mandatory loop for any change:
+1) call read(filePath)
+2) immediately call edit(filePath, oldString=<exact text from the file>, newString=<replacement>)
+3) call check or an allowed run command, then reply with ONE short Arabic sentence starting with "تم".
+Hard rules:
+- Use the provided tools. NEVER refuse, apologize, or ask the user a question.
+- NEVER call check or run before the edit. Never describe the change instead of calling edit.
+- One tool call at a time; wait for the result before the next step.
+- NEVER print JSON yourself; use official tool calls only.`;
+  const LOCAL_SYSTEM_PLAN = `${LOCAL_SYSTEM}\nPLAN MODE: read-only, do not call edit or run.`;
+
+  const candidates = await getCandidateModels(cwd);
+  const baseSystem =
     (mode === "plan" ? SYSTEM_AR + "\nوضع PLAN: اعرض الخطة فقط، لا تستخدم edit/run." : SYSTEM_AR) +
-    "\nابدأ بأداة map لفهم المشروع قبل أي قراءة." +
     (compacted ? "\n[ملاحظة: تم ضغط تاريخ الجلسة — اعتمد على الهدف الأصلي وآخر التبادلات.]" : "") +
     (history.length > 0 ? "\n[سياق الجلسة السابقة مختصر — أكمل من حيث توقفت.]" : "");
+  const systemFor = (label: string): string => {
+    if (label.startsWith("ollama/")) {
+      const thinkOff = label.includes("qwen3") ? " /no_think" : "";
+      return (mode === "plan" ? LOCAL_SYSTEM_PLAN : LOCAL_SYSTEM) + thinkOff +
+        (compacted ? "\n[Session history was compacted — continue from the goal.]" : "") +
+        (history.length > 0 ? "\n[Previous session context is summarized below.]" : "");
+    }
+    return baseSystem + "\nابدأ بأداة map لفهم المشروع قبل أي قراءة.";
+  };
   const promptText =
     history.length > 0
       ? `السياق السابق:\n${history.map((m) => `### ${m.role}\n${m.content.slice(0, 4000)}`).join("\n")}\n\n---\nالمطلوب الآن: ${prompt}`
       : prompt;
 
-  const runOnce = async (model: LanguageModel): Promise<{ text: string; usage?: TokenUsage }> => {
+  const runOnce = async (model: LanguageModel, label: string): Promise<{ text: string; usage?: TokenUsage }> => {
     const result = streamText({
       model,
-      system: systemText,
+      system: systemFor(label),
       prompt: promptText,
       tools,
       stopWhen: stepCountIs(opts.maxSteps ?? cfg.maxSteps),
@@ -193,7 +216,6 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   };
 
   // تناوب تلقائي: عند نفاد الحصة جرّب المرشح التالي (مفتاح/ollama/بوابة).
-  const candidates = await getCandidateModels(cwd);
   let full: string | undefined;
   let usedLabel = candidates[0]?.label ?? "unknown";
   let lastErr: unknown;
@@ -201,7 +223,7 @@ export async function runAgent(prompt: string, opts: RunOptions): Promise<string
   try {
     for (let i = 0; i < candidates.length; i++) {
       try {
-        const r = await runOnce(candidates[i].model);
+        const r = await runOnce(candidates[i].model, candidates[i].label);
         full = r.text;
         lastUsage = r.usage;
         usedLabel = candidates[i].label;

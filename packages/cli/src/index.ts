@@ -6,6 +6,7 @@ import { loadHistory, runAgent } from "@metwily/core/index.js";
 import { detectIntent } from "@metwily/llm/intent.js";
 import { listOllamaModels, listProxyModels, proxyConfig } from "@metwily/llm/proxy.js";
 import { startServer } from "@metwily/server/index.js";
+import { runDoctor } from "./doctor.js";
 
 // درس opencode: تأكيد بشري قبل التنفيذ في وضع build (طبقة permission خفيفة).
 async function confirmBuild(): Promise<boolean> {
@@ -44,11 +45,12 @@ async function printModels(): Promise<void> {
     if (tags.length > 0) {
       console.log(`\n• Ollama المحلي — ${tags.length} موديل:`);
       for (const m of tags) console.log(`  - ${m}`);
+      console.log("  (الافتراضي: محلي أولاً لو Ollama شغال — للفحص: metwily doctor)");
     }
   } catch {
     // Ollama غير مشغّل — لا مشكلة
   }
-  console.log('\nللاختيار: metwily --model "<id>" "مهمتك"');
+  console.log('\nللاختيار: metwily --model "<id>" "مهمتك" — مثال محلي: metwily --model metwily-local "صلح typo"');
 }
 
 const program = new Command();
@@ -86,18 +88,23 @@ program
       await printModels();
       return;
     }
+    if (prompt === "doctor") {
+      await runDoctor();
+      return;
+    }
     if (!prompt) {
-      console.log("استخدم: metwily \"زود صفحة تسعير\" أو metwily --plan \"ابني SaaS\" أو metwily models");
+      console.log('استخدم: metwily "زود صفحة تسعير" أو metwily --plan "ابني SaaS" أو metwily models أو metwily doctor');
       return;
     }
     const intent = detectIntent(prompt);
     const mode = opts.plan || intent === "plan" ? "plan" : "build";
     if (opts.model) {
-      const proxyOn =
-        (process.env.METWILY_PROVIDER ?? "").trim().toLowerCase() === "proxy" ||
-        Boolean((process.env.METWILY_PROXY_URL ?? "").trim());
-      // gemini-* → مفتاح Gemini، وإلا الموديل العام (DeepSeek/بروكسي)
-      if (!proxyOn && opts.model.startsWith("gemini")) process.env.METWILY_GEMINI_MODEL = opts.model;
+      const provider = (process.env.METWILY_PROVIDER ?? "").trim().toLowerCase();
+      const proxyOn = provider === "proxy" || Boolean((process.env.METWILY_PROXY_URL ?? "").trim() && provider !== "ollama" && provider !== "local");
+      const localOn = provider === "ollama" || provider === "local" || Boolean((process.env.AGENT_LLM_URL ?? "").trim());
+      // gemini-* → مفتاح Gemini، وid فيه ":" → موديل Ollama، وإلا الموديل العام (DeepSeek/بروكسي)
+      if (localOn || (!proxyOn && opts.model.includes(":"))) process.env.METWILY_OLLAMA_MODEL = opts.model;
+      else if (!proxyOn && opts.model.startsWith("gemini")) process.env.METWILY_GEMINI_MODEL = opts.model;
       else process.env.METWILY_MODEL = opts.model;
     }
     if (mode === "plan") console.log("[plan] وضع الخطة — أدوات القراءة فقط.\n");

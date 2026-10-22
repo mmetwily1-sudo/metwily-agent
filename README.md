@@ -26,6 +26,19 @@ pnpm exec tsx packages/cli/src/index.ts --plan "ابني SaaS"
 pnpm exec tsx packages/cli/src/index.ts --resume   # إكمال الجلسة السابقة
 ```
 
+## محلي 100% (Ollama)
+```bash
+ollama pull qwen3:1.7b
+ollama create metwily-local -f infra/ollama/Modelfile
+set METWILY_PROVIDER=ollama
+pnpm exec tsx packages/cli/src/index.ts doctor   # حالة Ollama + الموديل + الرام
+pnpm exec tsx packages/cli/src/index.ts "عدّل hello.js"
+```
+- الجهاز 8GB: `qwen3:1.7b` هو الافتراضي الآمن (الموديل 4B يحتاج رام فاضية ≥3GB).
+- سيرفر 16GB+: عدّل `FROM` في Modelfile إلى `qwen3:4b` ثم `ollama create metwily-local -f ...` مرة أخرى.
+- لتقليل الضغط: `set OLLAMA_MAX_LOADED_MODELS=1` و`set OLLAMA_KEEP_ALIVE=3m`.
+- العداد `0 in / 0 out` طبيعي محلياً (Ollama streaming لا يعيد usage).
+
 ## binary واحد (Bun)
 ```bash
 bun build packages/cli/src/index.ts --compile --outfile metwily.exe
