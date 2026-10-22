@@ -29,7 +29,12 @@ async function printModels(): Promise<void> {
       for (const m of models) console.log(`  - ${m}`);
       if (models.length === 0) console.log("  (فاضي — اربط حساباً واحداً على الأقل من لوحة http://localhost:3000)");
     } catch (err) {
-      console.log(`\n• البروكسي ${cfg.baseURL}: غير متصل (${err instanceof Error ? err.message : String(err)})`);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(
+        /\b(401|500)\b/.test(msg)
+          ? `\n• البروكسي ${cfg.baseURL}: شغال لكن مفيش حساب مربوط — افتح http://localhost:3000 واربط حساباً`
+          : `\n• البروكسي ${cfg.baseURL}: غير متصل (${msg})`,
+      );
     }
   } else {
     console.log("\n• البروكسي: غير مضبوط — METWILY_PROXY_URL=http://127.0.0.1:3000/v1");
