@@ -4,6 +4,7 @@ import { createInterface } from "node:readline";
 import { Command } from "commander";
 import { loadHistory, runAgent } from "@metwily/core/index.js";
 import { detectIntent } from "@metwily/llm/intent.js";
+import { listOllamaModels, listProxyModels, proxyConfig } from "@metwily/llm/proxy.js";
 import { startServer } from "@metwily/server/index.js";
 
 // درس opencode: تأكيد بشري قبل التنفيذ في وضع build (طبقة permission خفيفة).
@@ -17,6 +18,34 @@ async function confirmBuild(): Promise<boolean> {
   return /^(y|نعم|ايوه|أيوه)/i.test(answer.trim());
 }
 
+async function printModels(): Promise<void> {
+  console.log("الموديلات المتاحة:\n");
+  console.log("• مدمج: deepseek-chat, deepseek-reasoner, gemini-3.8-flash");
+  const cfg = proxyConfig();
+  if (cfg) {
+    try {
+      const models = await listProxyModels(cfg);
+      console.log(`\n• البروكسي ${cfg.baseURL} — ${models.length} موديل:`);
+      for (const m of models) console.log(`  - ${m}`);
+      if (models.length === 0) console.log("  (فاضي — اربط حساباً واحداً على الأقل من لوحة http://localhost:3000)");
+    } catch (err) {
+      console.log(`\n• البروكسي ${cfg.baseURL}: غير متصل (${err instanceof Error ? err.message : String(err)})`);
+    }
+  } else {
+    console.log("\n• البروكسي: غير مضبوط — METWILY_PROXY_URL=http://127.0.0.1:3000/v1");
+  }
+  try {
+    const tags = await listOllamaModels();
+    if (tags.length > 0) {
+      console.log(`\n• Ollama المحلي — ${tags.length} موديل:`);
+      for (const m of tags) console.log(`  - ${m}`);
+    }
+  } catch {
+    // Ollama غير مشغّل — لا مشكلة
+  }
+  console.log('\nللاختيار: metwily --model "<id>" "مهمتك"');
+}
+
 const program = new Command();
 program.name("metwily").description("متولي — Arabic-first coding agent").version("0.1.0");
 
@@ -25,7 +54,7 @@ program
   .option("--plan", "عرض الخطة فقط بدون تنفيذ (read/search فقط)")
   .option("--resume", "إكمال آخر جلسة")
   .option("--no-commit", "تعطيل الـ auto-commit لهذه الجلسة")
-  .option("--model <id>", "تجاوز الموديل (deepseek-chat/reasoner أو gemini-xxx)")
+  .option("--model <id>", "تجاوز الموديل (deepseek-chat/reasoner أو gemini-xxx أو أي id من البروكسي)")
   .option("--port <n>", "منفذ السيرفر مع (serve)", "3847")
   .option("-C, --cwd <dir>", "مجلد العمل", process.cwd())
   .action(async (prompt: string | undefined, opts: { plan?: boolean; resume?: boolean; commit?: boolean; model?: string; port?: string; cwd: string }) => {
@@ -48,15 +77,22 @@ program
       console.log('\nاكتب prompt جديد وسيُكمل بنفس السياق — مثال: metwily "كمّل"');
       return;
     }
+    if (prompt === "models") {
+      await printModels();
+      return;
+    }
     if (!prompt) {
-      console.log("استخدم: metwily \"زود صفحة تسعير\" أو metwily --plan \"ابني SaaS\"");
+      console.log("استخدم: metwily \"زود صفحة تسعير\" أو metwily --plan \"ابني SaaS\" أو metwily models");
       return;
     }
     const intent = detectIntent(prompt);
     const mode = opts.plan || intent === "plan" ? "plan" : "build";
     if (opts.model) {
-      // gemini-* → مفتاح Gemini، وإلا DeepSeek (نفس قاعدة getModelId)
-      if (opts.model.startsWith("gemini")) process.env.METWILY_GEMINI_MODEL = opts.model;
+      const proxyOn =
+        (process.env.METWILY_PROVIDER ?? "").trim().toLowerCase() === "proxy" ||
+        Boolean((process.env.METWILY_PROXY_URL ?? "").trim());
+      // gemini-* → مفتاح Gemini، وإلا الموديل العام (DeepSeek/بروكسي)
+      if (!proxyOn && opts.model.startsWith("gemini")) process.env.METWILY_GEMINI_MODEL = opts.model;
       else process.env.METWILY_MODEL = opts.model;
     }
     if (mode === "plan") console.log("[plan] وضع الخطة — أدوات القراءة فقط.\n");

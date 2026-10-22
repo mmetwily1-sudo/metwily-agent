@@ -6,6 +6,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import { loadConfig } from "@metwily/tools/config.js";
 import { echoModel } from "./echo.js";
+import { proxyConfig } from "./proxy.js";
 
 // درس المعرفة: مفتاحا Gemini بتناوب (GEMINI_API_KEY + GEMINI_API_KEY_2)
 // لأن الحصة المجانية هي عنق الزجاجة — التناوب مذكور في vision.ts لمنارة.
@@ -64,7 +65,9 @@ export function requireApiKey(): string {
   if (deepseekKey()) return deepseekKey();
   const g = geminiKeys();
   if (g.length > 0) return g[0];
-  throw new Error("لا يوجد مفتاح: ضع DEEPSEEK_API_KEY (مدفوع) أو GEMINI_API_KEY (مجاني من aistudio.google.com)");
+  const proxy = proxyConfig();
+  if (proxy) return proxy.apiKey;
+  throw new Error("لا يوجد مفتاح: ضع DEEPSEEK_API_KEY أو GEMINI_API_KEY، أو شغّل بروكسي محلي واضبط METWILY_PROXY_URL");
 }
 
 // التناوب: مفتاح Gemini رقم N (لتجاوز حدود الحصة — نفس نهج منارة).
@@ -81,11 +84,24 @@ export async function getCandidateModels(cwd = process.cwd()): Promise<Array<{ l
   if ((process.env.METWILY_PROVIDER ?? "").trim().toLowerCase() === "echo") {
     return [{ label: "echo/demo", model: echoModel() }];
   }
+  const out: Array<{ label: string; model: LanguageModel }> = [];
+  // البروكسي المحلي (AIClient-2-API وأمثاله): موديلات متعددة واختيار عبر --model.
+  const proxy = proxyConfig();
+  if (proxy) {
+    const provider = createOpenAICompatible({
+      name: "metwily-proxy",
+      apiKey: proxy.apiKey,
+      baseURL: proxy.baseURL,
+    });
+    for (const m of proxy.models.length > 0 ? proxy.models : ["default"]) {
+      out.push({ label: `proxy/${m}`, model: provider(m) });
+    }
+    if ((process.env.METWILY_PROVIDER ?? "").trim().toLowerCase() === "proxy") return out;
+  }
   if (deepseekKey()) {
     const id = await getModelId(cwd);
     return [{ label: `deepseek/${id}`, model: deepseek(id) }];
   }
-  const out: Array<{ label: string; model: LanguageModel }> = [];
   const ollama = ollamaConfig();
   if (ollama) {
     const local = createOpenAICompatible({ name: "ollama-local", baseURL: ollama.baseURL });
@@ -96,16 +112,18 @@ export async function getCandidateModels(cwd = process.cwd()): Promise<Array<{ l
     requireApiKey();
     throw new Error("unreachable");
   }
-  const geminiModel = (process.env.METWILY_GEMINI_MODEL ?? "gemini-3.8-flash").trim();
-  keys.forEach((apiKey, i) => {
-    out.push({ label: `gemini/${geminiModel}#${i + 1}`, model: createGoogleGenerativeAI({ apiKey })(geminiModel) });
-  });
-  const gw = createOpenAICompatible({
-    name: "gemini-openai-gateway",
-    apiKey: keys[keys.length - 1],
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  });
-  out.push({ label: `gemini-gateway/${geminiModel}`, model: gw(geminiModel) });
+  if (keys.length > 0) {
+    const geminiModel = (process.env.METWILY_GEMINI_MODEL ?? "gemini-3.8-flash").trim();
+    keys.forEach((apiKey, i) => {
+      out.push({ label: `gemini/${geminiModel}#${i + 1}`, model: createGoogleGenerativeAI({ apiKey })(geminiModel) });
+    });
+    const gw = createOpenAICompatible({
+      name: "gemini-openai-gateway",
+      apiKey: keys[keys.length - 1],
+      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    });
+    out.push({ label: `gemini-gateway/${geminiModel}`, model: gw(geminiModel) });
+  }
   return out;
 }
 

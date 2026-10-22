@@ -19,4 +19,5 @@ jobs:
       - run: pnpm exec tsx scripts/eval.mts
       - run: pnpm exec tsx scripts/e2e.mts
       - run: pnpm exec tsx scripts/server-test.mts
+      - run: pnpm exec tsx scripts/proxy-test.mts
       - run: test -z "$(git status --short)" || (echo "smoke leftovers:" && git status --short && exit 1)

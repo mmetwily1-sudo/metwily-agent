@@ -45,3 +45,4 @@
 
 ## القاعدة الذهبية
 لا ميزة بدون اختبار دخاني أخضر، ولا ادعاء بدون دليل في audit.log.
+- [x] Local OpenAI-compatible proxy provider (AIClient-2-API/LiteLLM) + `metwily models` + proxy-test 3/3 — 2026-10-22
